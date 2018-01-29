@@ -1,0 +1,512 @@
+---
+title: "Logistic Regression"
+author: "MAP541"
+date: "Winter 2017/2018"
+output:
+   html_document:
+    css: hideOutput.css
+    includes:
+      in_header: hideOutput.script
+---
+
+
+```{r Knitr_Global_Options, include=FALSE}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE, cache = TRUE, autodep = TRUE, tidy = FALSE)
+```
+
+In this lab, we will rely on the following packages
+
+```{r}
+library(tidyverse)
+library(questionr)
+library(plotluck)
+```
+
+
+# Age dependency of the Coronary Heart Disease
+
+The age and the presence or the absence of the CHD have been measured for 100 patients. The dataset is store in a tabulated file __CHD.txt__: on each line, we have a variable `AGE` giving the age in yeat, a variable `CHD` having value 1 if the disease is present and otherwise, as well a an `ID` and a age group number `AGRP`.
+
+1. Read the data set with `read_table` and look at it.
+
+<div class="hiddensolution">
+```{r}
+CHD <- read_delim('CHD.txt', delim = "\t")
+glimpse(CHD)
+```
+</div>
+
+2. Transform the variable that are factors into __R__ factors. 
+
+<div class="hiddensolution">
+```{r}
+CHD <- CHD %>%
+  mutate(CHD = factor(CHD, levels = c(0,1), labels = c("No","Yes")),
+         AGRP = factor(AGRP))
+glimpse(CHD)
+```
+</div>
+
+3. Now, look at the `summary` of the dataset to spot (and correct) possible remaining issues.
+
+<div class="hiddensolution">
+```{r}
+summary(CHD)
+```
+</div>
+
+4. Visualize the repartition of the patient medical state globally, by age or by age group.
+
+<div class="hiddensolution">
+```{r}
+ggplot(data = CHD, aes(x = CHD)) + geom_bar()
+ggplot(data = CHD, aes(x = AGE, y = CHD)) + geom_point(alpha = .5)
+ggplot(data = CHD, aes(x = AGE, y = CHD)) + geom_jitter(alpha = .5, width = 0, height = .1)
+ggplot(data = CHD, aes(x = CHD)) + geom_bar() + facet_wrap(~ AGRP)
+ggplot(data = CHD, aes(x = AGRP, fill = CHD))  + geom_bar(position = "fill")
+```
+</div>
+
+<!-- linear_model = lm(as.numeric(CHD) ~ AGE, data=CHD) -->
+<!-- ggplot(data = CHD, aes(x = AGE, y = CHD, ymin=-1, ymax=2) ) + geom_point(alpha = .5) + geom_abline(intercept = linear_model$coefficients[1], slope = linear_model$coefficients[2]) -->
+
+
+5. Compute the proportion of disease among each age group as well as the mean age.
+
+<div class="hiddensolution">
+```{r}
+CHD_AGRP_summary <- CHD %>% group_by(AGRP) %>%
+  summarize(AGE = mean(AGE), propYes = sum(CHD == "Yes")/n(), propNo = 1 - propYes)
+CHD_AGRP_summary
+
+ggplot(CHD_AGRP_summary %>% gather(key = "CHD", value = "prop", -AGE, -AGRP),
+       aes(x = CHD, y = prop)) + geom_col() + facet_wrap(~ AGRP)
+
+```
+</div>
+
+5. Compute the coefficients of the logistic regression of  `CHD` with respect to `AGE`. How to interpret them?
+
+<div class="hiddensolution">
+```{r}
+CHD_logit <- glm(CHD ~ AGE, family = binomial(link = "logit"), data = CHD)
+coef(CHD_logit)
+summary(CHD_logit)
+```
+</div>
+
+Same question with AGRP instead of AGE.
+
+<div class="hiddensolution">
+```{r}
+CHD_logit_class <- glm(CHD ~ AGRP,family = binomial(link = "logit"), data = CHD)
+coef(CHD_logit_class)
+coefs=coef(CHD_logit_class)
+exp(coefs[1]+coefs[-1])/(1+exp(coefs[1]+coefs[-1]))
+predict(CHD_logit,type="response")
+summary(CHD_logit)
+```
+</div>
+
+6. The function `odds.ratio` from the __questionr__ package allow to compute the odds ratio, as well as a confidence interval and p-values. How to interpret those results?
+
+<div class="hiddensolution">
+```{r}
+odds.ratio(CHD_logit)
+exp(0.11)
+```
+</div>
+
+7. Visualize the per group proportion and the logistic regression prediction.
+
+<div class="hiddensolution">
+```{r}
+ggplot(CHD_AGRP_summary, aes(x = AGE, y = propYes)) + geom_point(aes(col="prop")) +
+  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD=="Yes"), col="CHD")) + 
+  scale_color_discrete(name = "Legend") +
+   geom_segment(data = data.frame(x = c(19,29,34,39,44,49,54,59,69), y = rep(0,9)), 
+                aes(x = x, y = y, xend = x, yend = y+1), linetype = 2, color = "black") 
+
+CHD_grid <- data.frame(AGE = seq(20,70,length=100))
+CHD_grid <- CHD_grid %>% mutate(pred =  predict(CHD_logit, CHD_grid, type = "response"))
+
+ggplot(CHD_grid, aes(x = AGE, y = pred)) + geom_line(aes(col = "pred")) +
+  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD=="Yes"), col="CHD"))
+
+ggplot(CHD_AGRP_summary, aes(x = AGE, y = propYes)) + geom_point(aes(col="prop")) +
+  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD=="Yes"), col="CHD")) + 
+  scale_color_discrete(name = "Legend") +
+   geom_segment(data = data.frame(x = c(19,29,34,39,44,49,54,59,69), y = rep(0,9)), 
+                aes(x = x, y = y, xend = x, yend = y+1), linetype = 2, color = "black") +
+  geom_line(data = CHD_grid, aes(x = AGE, y = pred, col = "pred"))
+```
+</div>
+
+8. How to interpret the result of __summary__?
+
+<div class="hiddensolution">
+```{r}
+summary(CHD_logit)
+```
+</div>
+
+9. The confusion matrix, the cross table of the prediction vs the truth, is a good way to check the quality of a model. How to compute it?
+
+<div class="hiddensolution">
+```{r}
+CHD_pred <- predict(CHD_logit, newdata = CHD, type = "response")
+CHD_pred <- mutate(CHD, pred_prop = CHD_pred,
+                   pred = factor(pred_prop >= .5, levels = c(F,T), labels = c("No","Yes")))
+
+table(CHD_pred %>% select(CHD, pred))
+
+CHD_pred %>% summarize(prediction_error = mean(CHD != pred))
+```
+</div>
+
+10. How to test a model with a polynomial dependecy?
+
+<div class="hiddensolution">
+```{r}
+CHD_logit2 <- glm(CHD ~ AGE + I(AGE^2), family=binomial(link="logit"), data = CHD)
+summary(CHD_logit2)
+
+CHD_pred2 <- predict(CHD_logit2, newdata = CHD, type = "response")
+CHD_pred2 <- mutate(CHD, pred_prop = CHD_pred2,
+                   pred = factor(pred_prop >= .5, levels = c(F,T), labels = c("No","Yes")))
+
+table(CHD_pred2 %>% select(CHD, pred))
+
+CHD_pred2 %>% summarize(prediction_error = mean(CHD != pred))
+```
+</div>
+
+
+11. Verify with a cross validation scheme that those numbers are not too optimistic.
+
+<div class="hiddensolution">
+```{r}
+V <- 5
+Vf <- sample(nrow(CHD)) %% V + 1
+
+table_list <- vector("list", V) 
+for (v in 1:V) {
+  CHD_train <- CHD[Vf != v,]
+  CHD_test <- CHD[Vf == v,]
+  CHD_logit_train <- glm(CHD~AGE, family=binomial(link="logit"), data=CHD_train)### ATTENTION !!!! sur le train
+  
+  CHD_pred <- predict(CHD_logit_train, newdata = CHD_test, type = "response")
+  CHD_pred <- mutate(CHD_test, pred_prop = CHD_pred,
+                   pred = factor(pred_prop >= .5, levels = c(F,T), labels = c("No","Yes")))
+
+  table_list[[v]] <- table(CHD_pred %>% select(CHD, pred))/nrow(CHD_test)
+}
+mean_table <- Reduce("+", table_list)/V
+mean_table
+```
+</div>
+
+12. Compute the True Positive proportion, the True Negative proportion as well as the False Positive and False Negative ones. Compare with the Precision, the Recall and the Accuracy.
+
+<div class="hiddensolution">
+```{r}
+#True Positive
+mean_table["Yes","Yes"] / sum(mean_table["Yes",])
+#True Negative
+mean_table["No","No"] / sum(mean_table["No",])
+#False Positive
+mean_table["No","Yes"] / sum(mean_table["No",])
+#False Negative
+mean_table["Yes","No"] / sum(mean_table["Yes",])
+# Precision
+mean_table["Yes","Yes"] / sum(mean_table[,"Yes"])
+# Recall
+mean_table["Yes","Yes"] / sum(mean_table["Yes",])
+# Accuracy
+(mean_table["Yes","Yes"] + mean_table["No","No"]) / sum(mean_table)
+```
+</div>
+
+
+
+<!-- mydata = CHD -->
+<!-- mylogit <- glm(CHD ~ ., data = CHD, family = "binomial") -->
+<!-- summary(mylogit) -->
+<!-- prob=predict(mylogit,type=c("response")) -->
+<!-- mydata$prob=prob -->
+<!-- library(pROC) -->
+<!-- g <- roc(CHD ~ prob, data = mydata) -->
+<!-- plot(g) -->
+<!-- auc(g) -->
+
+
+
+
+
+# Credit default
+
+The aim is to predict whether a client will have a credit card default from a few simple covariates. In the __ISLR__ package, there is a dataset `Default` which measures
+for 10000 clients 4 variables:
+- `default`: a factor variable corresponding to the presence and the absence of default
+- `student`: a factor variable having value Yes for a student and No otherwise
+- `balance`: the average credit card balance at the end of the month
+- `income` : the customer income
+
+
+1. Read the data and obtain their summary.
+
+<div class="hiddensolution">
+```{r}
+library(ISLR)
+data(Default)
+glimpse(Default)
+summary(Default)
+```
+</div>
+
+2. Visualize each variable with the `plotluck` function from the __plotluck__ package.
+
+<div class="hiddensolution">
+```{r}
+plotluck(Default, default ~ 1)
+plotluck(Default, balance ~ 1)
+plotluck(Default, income ~ 1)
+plotluck(Default, student ~ 1)
+plotluck(Default, default ~ balance)
+plotluck(Default, default ~ income)
+plotluck(Default, default ~ student)
+```
+</div>
+
+3. Compute a logistic regression and interpret it.
+
+<div class="hiddensolution">
+```{r}
+Default_logit <- glm(default~ ., family = binomial(link="logit"),
+                     data=Default)
+summary(Default_logit)
+odds.ratio(Default_logit)
+```
+</div>
+
+4. Use the `step` function to simplify the model.
+
+<div class="hiddensolution">
+```{r}
+# backward selection with AIC
+step(Default_logit,direction="backward")
+
+Default_logit_simple <- step(Default_logit,direction="backward")
+summary(Default_logit_simple)
+
+odds.ratio(Default_logit_simple)
+```
+</div>
+
+5. Compare the two models in term of prediction accuracy.
+
+<div class="hiddensolution">
+```{r}
+Default_score <- predict(Default_logit, data = Default, type = "response")
+Default_simple_score <- predict(Default_logit_simple, data = Default, type = "response")
+
+Default_pred <- Default %>%
+  mutate(pred = factor(as.numeric(Default_score>= .5), levels = c(0,1), labels = c("No","Yes")),
+         pred_simple = factor(as.numeric(Default_simple_score>= .5), levels = c(0,1), labels = c("No","Yes")))
+
+Default_pred %>% summarize(err = mean(pred != default),
+                           err_simple = mean(pred_simple != default))
+```
+</div>
+
+6. Do you obtain the same result with cross validation?
+
+<div class="hiddensolution">
+```{r}
+# CV error
+glm_KFold_CV <- function (D, formula, K) {
+formula <- as.formula(formula)
+n <- nrow(D)
+Error_glm <- rep(0, K)
+set.seed(1234)
+ind_Fold <- sample(n) %% K + 1
+for (i in 1:K){
+  Dtrain <- D[ind_Fold!=i,]
+  Dtest <- D[ind_Fold==i,]
+  fit.glm <- glm(formula, data=Dtrain, family=binomial)
+  pred.glm <- as.numeric(predict(fit.glm, Dtest, type="response") >= 0.5 )
+  Error_glm[i] <- sum((as.numeric(Dtest[,"default"])-1)!= pred.glm)/nrow(Dtest)
+}
+mean(Error_glm)
+}
+
+Default_VC <- glm_KFold_CV(Default, "default ~ .", 5)
+Default_VC
+
+Default_simple_VC <-  glm_KFold_CV(Default,"default ~ student + balance",5)
+Default_simple_VC
+```
+</div>
+
+
+# Spam
+
+The __kernlab__ package proposes a `spam` dataset consisting of 4601 emails collected by George Forman at Hewlett-Packards Labs. For each of them, 57 characteritics are measured (mainly frequencies of certain words and characters) as well as a spam/no spam label. The goal is to predic this label.
+
+
+1. Read the data.
+
+<div class="hiddensolution">
+```{r}
+library(kernlab)
+data(spam)
+names(spam)
+summary(spam)
+```
+</div>
+
+2. Compute a logistic regression and interpret it.
+
+<div class="hiddensolution">
+```{r}
+fit.glm <- glm(type~.,data=spam,family=binomial)
+summary(fit.glm)
+```
+</div>
+
+3. What is the empirical prediction error? How does it compare to a CV error?
+
+<div class="hiddensolution">
+```{r}
+score.glm <- predict(fit.glm, spam, type = "response")
+pred.glm <- as.numeric(score.glm >=0.5)
+pred.glm <- factor(pred.glm, levels = c(0,1), labels = c("nonspam","spam"))
+
+Err <- mean(pred.glm != spam$type)
+Err
+
+n <- nrow(spam)
+V <- 5
+Vf <- sample(n) %% V + 1
+
+ErrCV <- numeric(V)
+for (v in 1:V) {
+  spam.train <- spam[Vf != v, ]
+  spam.test <- spam[Vf == v, ]
+  fit.glm <- glm(type~.,data=spam.train,family=binomial)
+  score.glm <- predict(fit.glm, spam.train, type = "response")
+  pred.glm <- as.numeric(score.glm >=0.5)
+  pred.glm <- factor(pred.glm, levels = c(0,1), labels = c("nonspam","spam"))
+
+  ErrCV[v] <- mean(pred.glm != spam$type)
+}
+mean(ErrCV)
+```
+</div>
+
+4. Compute the ROC curve with and without CV.
+
+<div class="hiddensolution">
+```{r}
+#seuil s
+s.glm=seq(0,1.01,.01)
+
+absc.glm=numeric(length(s.glm));
+ordo.glm=numeric(length(s.glm))
+
+fit.glm <- glm(type~.,data=spam,family=binomial)
+score.glm <- predict(fit.glm, spam, type = "response")
+
+for (i in 1:length(s.glm)){
+  ordo.glm[i]=sum( score.glm >= s.glm[i] & spam$type == "spam")/sum(spam$type == "spam")
+  absc.glm[i]=sum( score.glm >= s.glm[i] & spam$type == "nonspam")/sum(spam$type =="nonspam")
+}
+
+
+ROC = data.frame(FPR=absc.glm, TPR=ordo.glm)
+
+ggplot(ROC,aes(x=FPR,y=TPR)) + geom_path(color="red")  +
+   geom_segment(aes(x = 0, y = 0, xend = 1, yend = 1), linetype = 2, color = "black") 
+
+
+absc.glm.CV=matrix(nrow = V, ncol = length(s.glm))
+ordo.glm.CV=matrix(nrow = V, ncol = length(s.glm))
+
+for (v in 1:V) {
+  spam.train <- spam[Vf != v, ]
+  spam.test <- spam[Vf == v, ]
+  fit.glm <- glm(type~.,data=spam.train,family=binomial)
+  score.glm <- predict(fit.glm, spam.test, type = "response")
+
+  for (i in 1:length(s.glm)){
+    ordo.glm.CV[v,i]=sum( score.glm >= s.glm[i] & spam.test$type == "spam")/sum(spam.test$type == "spam")
+    absc.glm.CV[v,i]=sum( score.glm >= s.glm[i] & spam.test$type == "nonspam")/sum(spam.test$type =="nonspam")
+  }
+}
+
+ordo.glm.CV <- apply(ordo.glm.CV,2,mean)
+absc.glm.CV <- apply(absc.glm.CV,2,mean)
+
+ROC.CV = data.frame(FPR=absc.glm.CV, TPR=ordo.glm.CV)
+
+ggplot(ROC.CV,aes(x=FPR,y=TPR)) + geom_path(aes(),color="red")  +
+   geom_segment(aes(x = 0, y = 0, xend = 1, yend = 1), linetype = 2, color = "black") 
+
+ggplot(ROC.CV,aes(x=FPR,y=TPR)) + geom_path(color="red")  + geom_path(data = ROC, color = "blue") +
+   geom_segment(aes(x = 0, y = 0, xend = 1, yend = 1), linetype = 2, color = "black")
+```
+</div>
+
+5. Use `glmnet` to obtain the Lasso regularization path.
+
+<div class="hiddensolution">
+```{r Glmnet}
+X <- model.matrix(type ~ ., data = spam)
+Y <- spam[["type"]]
+
+library(glmnet)
+spam_lasso <- glmnet(X, Y, family = "binomial")
+
+coeffs_spam_lasso <- cbind(data.frame(t(as.matrix(coef(spam_lasso)))),
+                          lambda = spam_lasso[["lambda"]])
+
+ggplot(data = reshape2::melt(coeffs_spam_lasso, "lambda"), aes(x = lambda, y = value, color = variable)) + geom_line()
+
+ggplot(data = reshape2::melt(coeffs_spam_lasso, "lambda"), aes(x = lambda, y = value, color = variable)) + geom_line()  + guides(color = "none")
+
+ggplot(data = reshape2::melt(coeffs_spam_lasso, "lambda"), aes(x = factor(lambda), y = variable, fill = log(1+abs(value)), color = log(1+abs(value)))) + geom_tile()
+
+```
+</div>
+
+6. What is the best value for $\lambda$?
+
+<div class="hiddensolution">
+```{r}
+lambda.cv <-  cv.glmnet(X,Y,family ="binomial",intercept=F)$lambda.1se
+
+bh <- glmnet(X,Y,family ="binomial",intercept=F,lambda=lambda.cv)$beta
+
+bh
+```
+</div>
+
+7. Repeat the experiment with the  __ridge__ regression.
+
+<div class="hiddensolution">
+```{r}
+spam_ridge <- glmnet(X, Y, family = "binomial", alpha = 0)
+
+coeffs_spam_ridge <- cbind(data.frame(t(as.matrix(coef(spam_ridge)))),
+                          lambda = spam_ridge[["lambda"]])
+
+ggplot(data = reshape2::melt(coeffs_spam_ridge, "lambda"), aes(x = lambda, y = value, color = variable)) + geom_line() + guides(color = "none")
+
+ggplot(data = reshape2::melt(coeffs_spam_ridge, "lambda"), aes(x = factor(lambda), y = variable, fill = log(1+abs(value)), color = log(1+abs(value)))) + geom_tile()
+
+```
+</div>
+
+8. Do we obtain a gain if we use the _Lasso_ with a model including the interactions?
+
