@@ -30,43 +30,55 @@ The age and the presence or the absence of the CHD have been measured for 100 pa
 
 1. Read the data set with `read_table` and look at it.
 
-<div class="hiddensolution">
 ```{r}
-CHD <- read_delim('CHD.txt', delim = "\t")
-glimpse(CHD)
+CHD <- read.table("data/CHD.txt", header = TRUE)
 ```
-</div>
+
 
 2. Transform the variable that are factors into __R__ factors. 
 
-<div class="hiddensolution">
 ```{r}
-CHD <- CHD %>%
-  mutate(CHD = factor(CHD, levels = c(0,1), labels = c("No","Yes")),
-         AGRP = factor(AGRP))
-glimpse(CHD)
+CHD <- CHD %>% mutate(
+  AGRP = as.factor(AGRP),
+  CHD = as.factor(CHD)
+)
 ```
-</div>
+
 
 3. Now, look at the `summary` of the dataset to spot (and correct) possible remaining issues.
 
-<div class="hiddensolution">
 ```{r}
 summary(CHD)
 ```
-</div>
+There doesn't seem to be any issues or strange values in the data.
+
 
 4. Visualize the repartition of the patient medical state globally, by age or by age group.
 
-<div class="hiddensolution">
+Globally
 ```{r}
-ggplot(data = CHD, aes(x = CHD)) + geom_bar()
-ggplot(data = CHD, aes(x = AGE, y = CHD)) + geom_point(alpha = .5)
-ggplot(data = CHD, aes(x = AGE, y = CHD)) + geom_jitter(alpha = .5, width = 0, height = .1)
-ggplot(data = CHD, aes(x = CHD)) + geom_bar() + facet_wrap(~ AGRP)
-ggplot(data = CHD, aes(x = AGRP, fill = CHD))  + geom_bar(position = "fill")
+ggplot(data = CHD, mapping = aes(CHD)) +
+  geom_bar()
 ```
-</div>
+
+By age group
+```{r}
+ggplot(data = CHD, mapping = aes(x = AGRP, fill = CHD)) +
+  geom_bar(position = "fill")
+```
+
+By age
+```{r}
+ggplot(data = CHD, mapping = aes(AGE, CHD))+
+  geom_point()
+```
+To see a bit better, we can use the `geom_jitter` option. This randomly "shakes" our data for visualization purposes.
+
+```{r}
+ggplot(data = CHD, aes(x = AGE, y = CHD))+ 
+  geom_jitter(height = .1, width = 0)
+```
+
 
 <!-- linear_model = lm(as.numeric(CHD) ~ AGE, data=CHD) -->
 <!-- ggplot(data = CHD, aes(x = AGE, y = CHD, ymin=-1, ymax=2) ) + geom_point(alpha = .5) + geom_abline(intercept = linear_model$coefficients[1], slope = linear_model$coefficients[2]) -->
@@ -74,118 +86,105 @@ ggplot(data = CHD, aes(x = AGRP, fill = CHD))  + geom_bar(position = "fill")
 
 5. Compute the proportion of disease among each age group as well as the mean age.
 
-<div class="hiddensolution">
 ```{r}
-CHD_AGRP_summary <- CHD %>% group_by(AGRP) %>%
-  summarize(AGE = mean(AGE), propYes = sum(CHD == "Yes")/n(), propNo = 1 - propYes)
-CHD_AGRP_summary
+agrp_summary <- CHD %>% 
+  group_by(AGRP) %>% 
+  summarise(mean_age = mean(AGE), proportion_dead = sum(CHD == 1)/n())
 
-ggplot(CHD_AGRP_summary %>% gather(key = "CHD", value = "prop", -AGE, -AGRP),
-       aes(x = CHD, y = prop)) + geom_col() + facet_wrap(~ AGRP)
-
+agrp_summary
 ```
-</div>
+
 
 5. Compute the coefficients of the logistic regression of  `CHD` with respect to `AGE`. How to interpret them?
 
-<div class="hiddensolution">
 ```{r}
-CHD_logit <- glm(CHD ~ AGE, family = binomial(link = "logit"), data = CHD)
-coef(CHD_logit)
-summary(CHD_logit)
+log.fit.age <- glm(CHD ~ AGE, family =  binomial, data = CHD)
+summary(log.fit.age)
 ```
-</div>
+So we see there is a very significant effect of Age on the probability of having coronary heart disease. 
+The effect is positive (meaning that older patients have a higher probability of having CHD)
 
 Same question with AGRP instead of AGE.
 
-<div class="hiddensolution">
 ```{r}
-CHD_logit_class <- glm(CHD ~ AGRP,family = binomial(link = "logit"), data = CHD)
-coef(CHD_logit_class)
-coefs=coef(CHD_logit_class)
-exp(coefs[1]+coefs[-1])/(1+exp(coefs[1]+coefs[-1]))
-predict(CHD_logit,type="response")
-summary(CHD_logit)
+log.fit.agrp <- glm(CHD ~ AGRP, family =  binomial, data = CHD)
+summary(log.fit.agrp)
 ```
-</div>
+
+Here again, there is a strong association of age group with CHD (note that since the coefficients for some of the age groups are highly significant, we say age group has an effect, even if for some other age groups the coefficients are not statistically significant).
+We see again that the older the age, the higher the probability of having CHD.
+Since the AIC of the first model was lower, we would prefer the first model. This is not surprising as the first model captures the effect of age by using only one parameter, while AGRP uses 7 parameters.
 
 6. The function `odds.ratio` from the __questionr__ package allow to compute the odds ratio, as well as a confidence interval and p-values. How to interpret those results?
 
-<div class="hiddensolution">
 ```{r}
-odds.ratio(CHD_logit)
-exp(0.11)
+odds.ratio(log.fit.age)
 ```
-</div>
+
+Let's check these confidence intervals manually. We should have with probability .95:
+$$\beta_1 \in [\hat\beta_1 - z_{1-\alpha/2} * \hat\sigma ; \hat\beta_1 + z_{1-\alpha/2} * \hat\sigma ]$$
+$$\beta_1 \in [.11 - 1.96 * 0.02409; .11 + 1.96 * 0.02409 ]$$
+And so because $\exp(x)$ is bijective, we have with prob .95:
+$$exp(\beta_1) \in [exp(.11 - 1.96 * 0.02409) ; exp(.11 + 1.96 * 0.02409) ]$$
+Let's compute this interval
+```{r}
+c(exp(.11 - 1.96 * 0.02409) , exp(.11 + 1.96 * 0.02409))
+```
+This is indeed what we had for the confidence interval with the `odds.ratio` function.
+```{r}
+log.fit.age$coefficients
+```
+
+
+So when AGE increases by 1 year, the odds of having CHD are multiplied by $e^{0.111} = 1.117$. The association is very significant. This confirms what we said before: age is strongly positively associated with the probability of having CHD.
 
 7. Visualize the per group proportion and the logistic regression prediction.
 
-<div class="hiddensolution">
 ```{r}
-ggplot(CHD_AGRP_summary, aes(x = AGE, y = propYes)) + geom_point(aes(col="prop")) +
-  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD=="Yes"), col="CHD")) + 
-  scale_color_discrete(name = "Legend") +
-   geom_segment(data = data.frame(x = c(19,29,34,39,44,49,54,59,69), y = rep(0,9)), 
-                aes(x = x, y = y, xend = x, yend = y+1), linetype = 2, color = "black") 
-
 CHD_grid <- data.frame(AGE = seq(20,70,length=100))
-CHD_grid <- CHD_grid %>% mutate(pred =  predict(CHD_logit, CHD_grid, type = "response"))
+CHD_grid <- CHD_grid %>% mutate(pred =  predict(log.fit.age, CHD_grid, type = "response"))
+```
 
-ggplot(CHD_grid, aes(x = AGE, y = pred)) + geom_line(aes(col = "pred")) +
-  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD=="Yes"), col="CHD"))
 
-ggplot(CHD_AGRP_summary, aes(x = AGE, y = propYes)) + geom_point(aes(col="prop")) +
-  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD=="Yes"), col="CHD")) + 
+```{r}
+ggplot(agrp_summary, aes(x = mean_age, y = proportion_dead)) + geom_point(aes(col="prop")) +
+  geom_point(data = CHD, aes(x = AGE,y = as.numeric(CHD==1), col="CHD")) + 
   scale_color_discrete(name = "Legend") +
-   geom_segment(data = data.frame(x = c(19,29,34,39,44,49,54,59,69), y = rep(0,9)), 
+  geom_segment(data = data.frame(x = c(19,29,34,39,44,49,54,59,69), y = rep(0,9)), 
                 aes(x = x, y = y, xend = x, yend = y+1), linetype = 2, color = "black") +
   geom_line(data = CHD_grid, aes(x = AGE, y = pred, col = "pred"))
 ```
-</div>
+
 
 8. How to interpret the result of __summary__?
 
-<div class="hiddensolution">
 ```{r}
-summary(CHD_logit)
+summary(log.fit.age)
 ```
-</div>
+
 
 9. The confusion matrix, the cross table of the prediction vs the truth, is a good way to check the quality of a model. How to compute it?
 
-<div class="hiddensolution">
 ```{r}
-CHD_pred <- predict(CHD_logit, newdata = CHD, type = "response")
-CHD_pred <- mutate(CHD, pred_prop = CHD_pred,
-                   pred = factor(pred_prop >= .5, levels = c(F,T), labels = c("No","Yes")))
-
-table(CHD_pred %>% select(CHD, pred))
-
-CHD_pred %>% summarize(prediction_error = mean(CHD != pred))
+confusion <- table(list(predicted = as.numeric(predict(log.fit.age, type = "response") > .5), observed = CHD$CHD))
+confusion
 ```
-</div>
+Let's compute the prediction error
+```{r}
+(confusion[1,2] + confusion[2,1]) / length(CHD$CHD)
+```
+
 
 10. How to test a model with a polynomial dependecy?
 
-<div class="hiddensolution">
 ```{r}
-CHD_logit2 <- glm(CHD ~ AGE + I(AGE^2), family=binomial(link="logit"), data = CHD)
-summary(CHD_logit2)
-
-CHD_pred2 <- predict(CHD_logit2, newdata = CHD, type = "response")
-CHD_pred2 <- mutate(CHD, pred_prop = CHD_pred2,
-                   pred = factor(pred_prop >= .5, levels = c(F,T), labels = c("No","Yes")))
-
-table(CHD_pred2 %>% select(CHD, pred))
-
-CHD_pred2 %>% summarize(prediction_error = mean(CHD != pred))
+log.fit.poly <- glm(CHD ~ AGE + I(AGE^2), family = binomial, data = CHD)
+summary(log.fit.poly)
 ```
-</div>
-
+What we see is that now none of our predictors are significant. The AIC increased by two compared to the linear dependency model. This is not a good model.
 
 11. Verify with a cross validation scheme that those numbers are not too optimistic.
 
-<div class="hiddensolution">
 ```{r}
 V <- 5
 Vf <- sample(nrow(CHD)) %% V + 1
@@ -205,28 +204,10 @@ for (v in 1:V) {
 mean_table <- Reduce("+", table_list)/V
 mean_table
 ```
-</div>
+
 
 12. Compute the True Positive proportion, the True Negative proportion as well as the False Positive and False Negative ones. Compare with the Precision, the Recall and the Accuracy.
 
-<div class="hiddensolution">
-```{r}
-#True Positive
-mean_table["Yes","Yes"] / sum(mean_table["Yes",])
-#True Negative
-mean_table["No","No"] / sum(mean_table["No",])
-#False Positive
-mean_table["No","Yes"] / sum(mean_table["No",])
-#False Negative
-mean_table["Yes","No"] / sum(mean_table["Yes",])
-# Precision
-mean_table["Yes","Yes"] / sum(mean_table[,"Yes"])
-# Recall
-mean_table["Yes","Yes"] / sum(mean_table["Yes",])
-# Accuracy
-(mean_table["Yes","Yes"] + mean_table["No","No"]) / sum(mean_table)
-```
-</div>
 
 
 
